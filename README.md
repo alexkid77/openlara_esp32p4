@@ -18,7 +18,7 @@ Runs the classic Tomb Raider 1 engine with software rendering, audio, and USB HI
 
 ## Demo
 
-<video src="video.mp4" width="360" controls></video>
+![OpenLara ESP32-P4 Demo](openlara_demo.gif)
 
 ## Hardware Requirements
 
