@@ -1,0 +1,7 @@
+dependencies:
+  espressif/esp_lcd_touch: "*"
+  espressif/esp_lcd_ek79007: "*"
+  espressif/esp_lcd_touch_gt911: "*"
+  espressif/usb_host_hid: "^1.0.1"
+  espressif/esp_codec_dev: "*"
+  idf: ">=5.3"

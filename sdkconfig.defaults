@@ -1,0 +1,45 @@
+# Chip: ESP32-P4 funcion-EV-Board con chip revision v0.1 (early silicon).
+# Las revisiones <3.0 y >=3.0 son incompatibles entre si.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_1=y
+
+# SPIRAM configuration for ESP32-P4 (ESP32-P4-Function-EV-Board)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_BOOT_INIT=y
+CONFIG_SPIRAM_USE_MALLOC=y
+# Reparto de memoria: TODO el heap generico (malloc/new del motor) va a PSRAM
+# (32MB). La SRAM interna queda para: DMA del SDMMC (MALLOC_CAP_DMA), stacks de
+# tasks y el framebuffer del software renderer. Con el umbral a 16KB el motor
+# agotaba la RAM interna durante el parseo de nivel y el driver SD fallaba con
+# "allocate_dma_buf: not enough mem" -> lectura corrupta -> bad_alloc -> abort.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=0
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+
+# Task stacks (el motor OpenLara necesita stack amplio en su propia task)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# CPU / rendimiento
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_FREERTOS_UNICORE=n
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_400=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=400
+
+# Tick de FreeRTOS a 1 kHz para el game loop (vTaskDelay(1) = 1 ms)
+CONFIG_FREERTOS_HZ=1000
+
+# Custom Partitions and Flash Size (datos del juego en SD, sin SPIFFS)
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# Disable Task Watchdog Timer (carga de niveles desde SD)
+CONFIG_ESP_TASK_WDT_EN=n
+CONFIG_ESP_TASK_WDT_INIT=n
+
+# FAT: nombres largos en la SD (niveles .PHD)
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_VFS_FSTAT_BLKSIZE=4096
