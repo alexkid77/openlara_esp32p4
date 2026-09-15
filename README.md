@@ -1,16 +1,16 @@
-# OpenLara ESP32-P4
+# OpenLara for ESP32-P4 and ESP32-S31
 
-A port of [OpenLara](https://github.com/XProger/OpenLara) to the **ESP32-P4-Function-EV-Board**.
-Runs the classic Tomb Raider 1 engine with software rendering, audio, and USB HID keyboard input on Espressif's latest RISC-V SoC.
+A port of [OpenLara](https://github.com/XProger/OpenLara) to the **ESP32-P4-Function-EV-Board** and **ESP32-S31-Korvo-1**.
+It runs the classic Tomb Raider 1 engine with software rendering, audio, and USB HID keyboard input on Espressif's latest RISC-V SoCs.
 
 **Author:** [Alejandro Villegas Alonso](https://www.linkedin.com/in/alejandro-villegas-alonso-825041b1/)
 
 ## Features
 
-- Software RGB565 renderer at 320x240, hardware-scaled to 1024x600 via the PPA (Pixel Processing Accelerator)
-- 44.1 kHz stereo audio via I2S + ES8311 codec
+- Software RGB565 renderer at 320x240, hardware-scaled via the PPA to 1024x600 (P4) or 800x480 (S31)
+- 44.1 kHz stereo audio via I2S + ES8311 (P4) or ES8389 (S31)
 - USB HID keyboard input (boot protocol)
-- GT911 capacitive touch (I2C)
+- GT911 capacitive touch initialization on P4
 - MicroSD card (SDMMC 4-bit) for game data
 - MP3 (minimp3), OGG (stb_vorbis) and zlib (tinf) decode support
 - On-screen FPS counter (F12 toggle)
@@ -22,23 +22,23 @@ Runs the classic Tomb Raider 1 engine with software rendering, audio, and USB HI
 
 ## Hardware Requirements
 
-| Component | Details |
-|-----------|---------|
-| Board | ESP32-P4-Function-EV-Board |
-| SoC | ESP32-P4, RISC-V dual-core @ 400 MHz (chip rev < 3.0) |
-| Flash | 16 MB |
-| PSRAM | 32 MB (SPIRAM, HEX mode, 200 MHz) |
-| Display | 1024x600 MIPI DSI LCD (EK79007) |
-| Touch | GT911 capacitive (I2C) |
-| Audio | ES8311 codec via I2S |
-| Storage | MicroSD card (SDMMC 4-bit) |
-| Input | USB HID keyboard (required) |
+| Component | ESP32-P4-Function-EV-Board  | ESP32-S31-Korvo-1           |
+| --------- | --------------------------- | --------------------------- |
+| SoC       | ESP32-P4                    | ESP32-S31                   |
+| Flash     | 16 MB                       | 16 MB                       |
+| PSRAM     | 32 MB HEX                   | 16 MB OCT                   |
+| Display   | 1024x600 MIPI DSI EK79007   | 800x480 RGB565 LCD          |
+| Audio     | ES8311 via I2S STD          | ES8389 via I2S TDM          |
+| Storage   | MicroSD, SDMMC 4-bit        | MicroSD, SDMMC 4-bit        |
+| Input     | USB HID keyboard (required) | USB HID keyboard (required) |
 
 ## Building
 
 ### Prerequisites
 
-- ESP-IDF v5.4+ (tested with v5.4.4 / v5.5.5 / v6.1)
+- ESP-IDF
+  - v5.4+ for ESP32-P4 (tested with v5.4.4 / v5.5.5 / v6.1)
+  - v6.1+ for ESP32-S31 (tested with [`c712a0dd`](https://github.com/espressif/esp-idf/commit/c712a0dde385d659a1470a136251980d31a70bc1))
 - `riscv32-esp-elf` toolchain
 
 ### Build & Flash
@@ -46,6 +46,16 @@ Runs the classic Tomb Raider 1 engine with software rendering, audio, and USB HI
 ```bash
 # Set up ESP-IDF environment
 . $IDF_PATH/export.sh
+
+
+# Set Target (ESP32-P4-Function-EV-Board)
+idf.py set-target esp32p4
+# Hint:
+# If you are using P4 Rev 3+,
+# uncheck `ESP32P4_SELECTS_REV_LESS_V3` in `idf.py menuconfig`
+
+# Set Target (ESP32-S31-Korvo-1)
+# idf.py --preview set-target esp32s31
 
 # Build
 idf.py build
@@ -58,7 +68,7 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 You must provide your own **Tomb Raider 1** data files (`.PHD` levels, `.PCX` images, cutscenes) inside a **`DATA`** folder on the MicroSD card. The game will not run without them.
 
-Copy the directory as follows, preserving the upper-case filename and directory names:
+Copy the directory as follows, preserving uppercase filenames and directory names:
 
 ```text
 <SD card root>/
@@ -73,14 +83,14 @@ Copy the directory as follows, preserving the upper-case filename and directory 
 
 A **USB keyboard** must be connected to the board.
 
-| Key | Action |
-|-----|--------|
-| Arrow keys | Movement / Camera |
-| Ctrl | Action (draw weapon, grab, interact) |
-| Shift | Walk |
-| Alt | Step / Look |
-| Space | Jump |
-| F12 | Toggle FPS counter |
+| Key        | Action                               |
+| ---------- | ------------------------------------ |
+| Arrow keys | Movement / Camera                    |
+| Ctrl       | Action (draw weapon, grab, interact) |
+| Shift      | Walk                                 |
+| Alt        | Step / Look                          |
+| Space      | Jump                                 |
+| F12        | Toggle FPS counter                   |
 
 ## Technical Notes
 
@@ -88,6 +98,7 @@ A **USB keyboard** must be connected to the board.
 - Near-plane clipping patch applied for the software renderer
 - FreeRTOS dual-core with a 1000 Hz tick; the audio pump task runs on core 0
 - All game memory is allocated from PSRAM; internal SRAM is reserved for DMA and task stacks
+  - S31 also puts the large game task stack in PSRAM to leave internal SRAM for DMA
 - Saves and cache are written to the SD card
 
 ## Credits

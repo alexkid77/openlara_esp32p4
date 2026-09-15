@@ -1,15 +1,15 @@
 /**
  * @file openlara_esp32p4.cpp
- * @brief OpenLara -> ESP32-P4 adapter.
+ * @brief OpenLara -> ESP32-P4 / ESP32-S31 adapter.
  *
  * Replaces src/platform/sdl12/main.cpp from the SDL 1.2 port:
  *   - Video  : 320x240 RGB565 framebuffer (software renderer) scaled to
- *              1024x600 by the PPA peripheral (ESP32P4DOOM pattern).
+ *              1024x600 on P4 or 800x480 on S31 by the PPA peripheral.
  *   - Input  : USB HID Host keyboard with a FreeRTOS queue (ESP32P4DOOM
  *              pattern), mapped to OpenLara's InputKey enum.
  *   - Data   : .PHD/.PCX levels and settings/saves from the SD card.
  *   - Audio  : Sound::fill() mixer pump (44100 Hz stereo int16) -> I2S ->
- *              ES8311 codec, the equivalent of the SDL_OpenAudio callback
+ *              ES8311 (P4) or ES8389 (S31), the equivalent of the SDL_OpenAudio callback
  *              of the SDL12 port.
  *
  * THIS IS THE ONLY TU THAT INCLUDES game.h (the engine is header-only:
@@ -27,6 +27,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 #include "usb/hid_host.h"
 #include "usb/hid_usage_keyboard.h"
 #include "usb/usb_host.h"
@@ -429,7 +430,7 @@ static void audio_task(void *arg) {
     };
 
     if (esp_codec_dev_open(codec_dev, &sample_info) != ESP_CODEC_DEV_OK) {
-        ESP_LOGE(TAG, "Could not open the ES8311 codec: no sound");
+        ESP_LOGE(TAG, "Could not open the audio codec: no sound");
     } else {
         esp_codec_dev_set_out_vol(codec_dev, 70);
 
@@ -562,15 +563,18 @@ static void game_task(void *arg) {
         video_present();
     }
 
+#if CONFIG_IDF_TARGET_ESP32S31
+    vTaskDeleteWithCaps(NULL);
+#else
     vTaskDelete(NULL);
+#endif
 }
 
 // ------------------------------------------------------------------
 // Entry point
 // ------------------------------------------------------------------
-extern "C" void openlara_Start(bsp_p4_handles_t bsp_handles,
-                               uint16_t *frame_buffer) {
-    ESP_LOGI(TAG, "Starting OpenLara on ESP32-P4 (USB Keyboard)...");
+extern "C" void openlara_Start(uint16_t *frame_buffer) {
+    ESP_LOGI(TAG, "Starting OpenLara (USB Keyboard)...");
 
     // 1. keyboard queue
     key_queue = xQueueCreate(32, sizeof(key_event_t));
@@ -584,15 +588,21 @@ extern "C" void openlara_Start(bsp_p4_handles_t bsp_handles,
     // 4. SD: contentDir/cacheDir/saveDir
     sd_init_content();
 
-    // 5. audio: I2S bus + ES8311 codec (the pump task is launched in
+    // 5. audio: I2S bus + board codec (the pump task is launched in
     //    game_task once Game::init() has run Sound::init())
     bsp_audio_init(NULL);
     codec_dev = bsp_audio_codec_speaker_init();
     if (!codec_dev)
-        ESP_LOGE(TAG, "ES8311 codec init failed: continuing without sound");
+        ESP_LOGE(TAG, "Audio codec init failed: continuing without sound");
 
     // 6. launch the game in its own task with a large stack (core 1)
+#if CONFIG_IDF_TARGET_ESP32S31
+    BaseType_t ok = xTaskCreatePinnedToCoreWithCaps(
+        game_task, "openlara", GAME_TASK_STACK, NULL, 5, NULL, 1,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
     BaseType_t ok = xTaskCreatePinnedToCore(game_task, "openlara",
                                             GAME_TASK_STACK, NULL, 5, NULL, 1);
+#endif
     assert(ok == pdTRUE);
 }
