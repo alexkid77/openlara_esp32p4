@@ -38,7 +38,7 @@ Runs the classic Tomb Raider 1 engine with software rendering, audio, and USB HI
 
 ### Prerequisites
 
-- ESP-IDF v5.4+ (tested with v5.4.4 / v5.5.5)
+- ESP-IDF v5.4+ (tested with v5.4.4 / v5.5.5 / v6.1)
 - `riscv32-esp-elf` toolchain
 
 ### Build & Flash
@@ -56,7 +56,18 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 ## Game Data
 
-You must provide your own **Tomb Raider 1** data files (`.PHD` levels, `.PCX` images, cutscenes) inside a **`data`** folder on the MicroSD card. The game will not run without them.
+You must provide your own **Tomb Raider 1** data files (`.PHD` levels, `.PCX` images, cutscenes) inside a **`DATA`** folder on the MicroSD card. The game will not run without them.
+
+Copy the directory as follows, preserving the upper-case filename and directory names:
+
+```text
+<SD card root>/
+└── DATA/
+    ├── GYM.PHD
+    ├── TITLE.PHD
+    ├── TITLEH.PCX
+    └── ... other game data files
+```
 
 ## Controls
 

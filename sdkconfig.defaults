@@ -1,3 +1,7 @@
+# Set ESP32-P4 as default
+CONFIG_IDF_TARGET="esp32p4"
+CONFIG_IDF_TARGET_ESP32P4=y
+
 # Chip: ESP32-P4 funcion-EV-Board con chip revision v0.1 (early silicon).
 # Las revisiones <3.0 y >=3.0 son incompatibles entre si.
 CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
