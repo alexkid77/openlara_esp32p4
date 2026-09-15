@@ -55,6 +55,7 @@ extern "C" {
 #define LCD_RESET_GPIO         GPIO_NUM_27
 #define TOUCH_I2C_SCL          GPIO_NUM_8
 #define TOUCH_I2C_SDA          GPIO_NUM_7
+#define BSP_BOOT_BUTTON_GPIO   GPIO_NUM_35
 
 /**
  * POWER SUPPLY (LDO):

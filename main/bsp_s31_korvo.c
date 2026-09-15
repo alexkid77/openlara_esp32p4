@@ -1,10 +1,12 @@
 #include "bsp_s31_korvo.h"
+#include "sdkconfig.h"
 #include "driver/gpio.h"
 #include "driver/i2s_tdm.h"
 #include "driver/sdmmc_host.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_check.h"
 #include "esp_lcd_panel_rgb.h"
+#include "esp_lcd_touch_gt1151.h"
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "freertos/FreeRTOS.h"
@@ -61,8 +63,43 @@ esp_err_t bsp_s31_init_hardware(bsp_s31_handles_t *handles) {
     };
     ret = i2c_new_master_bus(&i2c_cfg, &s_i2c_bus);
     handles->i2c_bus = s_i2c_bus;
-    if (ret != ESP_OK) ESP_LOGE(TAG, "I2C initialization failed: %s", esp_err_to_name(ret));
-    return ret;
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "I2C initialization failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // The shared I2C bus is also needed by the ES8389 audio codec.
+#if CONFIG_OPENLARA_TOUCH_CONTROL
+    // GT1151 shares the GPIO0/1 control bus with the ES8389 codec.
+    esp_lcd_panel_io_i2c_config_t touch_io_cfg = ESP_LCD_TOUCH_IO_I2C_GT1151_CONFIG();
+    touch_io_cfg.scl_speed_hz = 400000;
+    esp_lcd_panel_io_handle_t touch_io = NULL;
+    ret = esp_lcd_new_panel_io_i2c(s_i2c_bus, &touch_io_cfg, &touch_io);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "GT1151 I2C IO unavailable: %s; continuing without touch",
+                 esp_err_to_name(ret));
+        return ESP_OK;
+    }
+
+    esp_lcd_touch_config_t touch_cfg = {
+        .x_max = LCD_H_RES,
+        .y_max = LCD_V_RES,
+        .rst_gpio_num = GPIO_NUM_NC,
+        .int_gpio_num = GPIO_NUM_NC,
+        .levels = {.reset = 0, .interrupt = 0},
+        .flags = {.swap_xy = 0, .mirror_x = 0, .mirror_y = 0},
+    };
+    ret = esp_lcd_touch_new_i2c_gt1151(touch_io, &touch_cfg, &handles->touch_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "GT1151 unavailable: %s; continuing without touch",
+                 esp_err_to_name(ret));
+        esp_lcd_panel_io_del(touch_io);
+        handles->touch_handle = NULL;
+    }
+    return ESP_OK;
+#else
+    return ESP_OK;
+#endif
 }
 
 esp_err_t bsp_sdcard_mount(void) {

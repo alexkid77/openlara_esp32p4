@@ -34,5 +34,5 @@ void app_main(void) {
 #endif
   frame_buffer = (uint16_t *)fb0;
 
-  openlara_Start(frame_buffer);
+  openlara_Start(frame_buffer, bsp_handles.touch_handle);
 }

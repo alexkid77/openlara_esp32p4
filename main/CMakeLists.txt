@@ -1,13 +1,13 @@
-if(CONFIG_IDF_TARGET_ESP32P4)
+if(IDF_TARGET STREQUAL "esp32p4")
     set(board_src "bsp_p4_eval.c")
-    set(board_requires esp_lcd_touch esp_lcd_ek79007 esp_lcd_touch_gt911)
+    set(board_requires esp_lcd_ek79007 esp_lcd_touch_gt911)
 else()
     set(board_src "bsp_s31_korvo.c")
-    set(board_requires)
+    set(board_requires esp_lcd_touch_gt1151)
 endif()
 
 idf_component_register(SRCS "main.c" "${board_src}" "openlara_esp32p4.cpp"
-                       PRIV_REQUIRES esp_lcd esp_driver_gpio esp_driver_i2c esp_driver_i2s esp_driver_ledc esp_driver_ppa esp_driver_sdmmc esp_timer ${board_requires} vfs usb esp_codec_dev driver fatfs esp_mm openlara pthread
+                       PRIV_REQUIRES esp_lcd esp_lcd_touch esp_driver_gpio esp_driver_i2c esp_driver_i2s esp_driver_ledc esp_driver_ppa esp_driver_sdmmc esp_timer ${board_requires} vfs usb esp_codec_dev driver fatfs esp_mm openlara pthread
                        INCLUDE_DIRS "")
 
 # The OpenLara engine is C++11 (like the original SDL12 build). In gnu++2b

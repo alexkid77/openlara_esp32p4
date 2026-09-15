@@ -4,6 +4,7 @@
  */
 
 #include "bsp_p4_eval.h"
+#include "sdkconfig.h"
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "driver/ledc.h"
@@ -142,10 +143,7 @@ esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
   esp_lcd_panel_io_tx_param(io_handle, 0x29, NULL, 0); // "Display ON"
   handles->panel_handle = panel_handle;
 
-  // 6. Touch (GT911): I2C Communication.
-  ESP_LOGI(TAG, "Configuring GT911 touch controller over I2C...");
-
-  // I2C Master: We define and initialize it here
+  // 6. Shared I2C bus for the ES8311 and optional GT911 touch controller.
   if (!s_i2c_bus) {
     i2c_master_bus_config_t i2c_bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -159,6 +157,9 @@ esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
   }
   handles->i2c_bus = s_i2c_bus;
 
+  // The shared I2C bus is also needed by the ES8311 audio codec.
+#if CONFIG_OPENLARA_TOUCH_CONTROL
+  ESP_LOGI(TAG, "Configuring GT911 touch controller over I2C...");
   // IO Interface for the GT911: I2C address and protocol.
   esp_lcd_panel_io_handle_t tp_io_handle = NULL;
   esp_lcd_panel_io_i2c_config_t tp_io_cfg = {
@@ -169,8 +170,11 @@ esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
       .flags.disable_control_phase = 1,
   };
   ret = esp_lcd_new_panel_io_i2c(s_i2c_bus, &tp_io_cfg, &tp_io_handle);
-  if (ret != ESP_OK)
-    return ret;
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "GT911 I2C IO unavailable: %s; continuing without touch",
+             esp_err_to_name(ret));
+    return ESP_OK;
+  }
 
   // Logical touch configuration: Coordinate mapping and mirroring.
   esp_lcd_touch_config_t tp_cfg = {
@@ -184,11 +188,16 @@ esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
 
   esp_lcd_touch_handle_t touch_handle = NULL;
   ret = esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &touch_handle);
-  if (ret != ESP_OK)
-    return ret;
+  if (ret != ESP_OK) {
+    ESP_LOGW(TAG, "GT911 unavailable: %s; continuing without touch",
+             esp_err_to_name(ret));
+    esp_lcd_panel_io_del(tp_io_handle);
+    return ESP_OK;
+  }
   handles->touch_handle = touch_handle;
+#endif
 
-  ESP_LOGI(TAG, "Visual and touch hardware ready.");
+  ESP_LOGI(TAG, "Board hardware ready.");
   return ESP_OK;
 }
 

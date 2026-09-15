@@ -10,7 +10,7 @@ It runs the classic Tomb Raider 1 engine with software rendering, audio, and USB
 - Software RGB565 renderer at 320x240, hardware-scaled via the PPA to 1024x600 (P4) or 800x480 (S31)
 - 44.1 kHz stereo audio via I2S + ES8311 (P4) or ES8389 (S31)
 - USB HID keyboard input (boot protocol)
-- GT911 capacitive touch initialization on P4
+- On-screen touch controls via GT911 (P4) or GT1151 (S31), enabled by default
 - MicroSD card (SDMMC 4-bit) for game data
 - MP3 (minimp3), OGG (stb_vorbis) and zlib (tinf) decode support
 - On-screen FPS counter (F12 toggle)
@@ -22,15 +22,15 @@ It runs the classic Tomb Raider 1 engine with software rendering, audio, and USB
 
 ## Hardware Requirements
 
-| Component | ESP32-P4-Function-EV-Board  | ESP32-S31-Korvo-1           |
-| --------- | --------------------------- | --------------------------- |
-| SoC       | ESP32-P4                    | ESP32-S31                   |
-| Flash     | 16 MB                       | 16 MB                       |
-| PSRAM     | 32 MB HEX                   | 16 MB OCT                   |
-| Display   | 1024x600 MIPI DSI EK79007   | 800x480 RGB565 LCD          |
-| Audio     | ES8311 via I2S STD          | ES8389 via I2S TDM          |
-| Storage   | MicroSD, SDMMC 4-bit        | MicroSD, SDMMC 4-bit        |
-| Input     | USB HID keyboard (required) | USB HID keyboard (required) |
+| Component | ESP32-P4-Function-EV-Board     | ESP32-S31-Korvo-1               |
+| --------- | ------------------------------ | ------------------------------- |
+| SoC       | ESP32-P4                       | ESP32-S31                       |
+| Flash     | 16 MB                          | 16 MB                           |
+| PSRAM     | 32 MB HEX                      | 16 MB OCT                       |
+| Display   | 1024x600 MIPI DSI EK79007      | 800x480 RGB565 LCD              |
+| Audio     | ES8311 via I2S STD             | ES8389 via I2S TDM              |
+| Storage   | MicroSD, SDMMC 4-bit           | MicroSD, SDMMC 4-bit            |
+| Input     | USB HID keyboard / GT911 touch | USB HID keyboard / GT1151 touch |
 
 ## Building
 
@@ -81,16 +81,54 @@ Copy the directory as follows, preserving uppercase filenames and directory name
 
 ## Controls
 
-A **USB keyboard** must be connected to the board.
+Use a USB keyboard or the built-in touchscreen.
 
-| Key        | Action                               |
-| ---------- | ------------------------------------ |
-| Arrow keys | Movement / Camera                    |
-| Ctrl       | Action (draw weapon, grab, interact) |
-| Shift      | Walk                                 |
-| Alt        | Step / Look                          |
-| Space      | Jump                                 |
-| F12        | Toggle FPS counter                   |
+### Touchscreen Controls
+
+`idf.py menuconfig` → **OpenLara controls** → **Enable touchscreen game controls**
+enables touchscreen initialization and input. It is enabled by default. If the
+touch controller fails to initialize, the game continues with USB keyboard input.
+
+Touchscreen controls divide the screen into movement (left), camera/look
+(middle), and action buttons (right). The right-side buttons handle weapon, walk,
+action, jump, and inventory. A double tap in the movement area rolls. Multiple
+fingers can be used together.
+
+> [!TIP]
+>
+> When touchscreen game controls are enabled, press the development board's
+> **BOOT** button to show or hide the on-screen controls.
+
+### USB Keyboard
+
+For the ESP32-P4-Function-EV-Board, connect the USB keyboard to the port labeled
+**USB-HS**.
+
+For the ESP32-S31-Korvo-1, connect the USB keyboard to the port labeled
+**USB 2.0**.
+
+The following are the default USB keyboard bindings; they can be changed in the
+in-game control settings.
+
+| Key                | Action                              |
+| ------------------ | ----------------------------------- |
+| Arrow keys         | Movement                            |
+| C                  | Look / camera                       |
+| Ctrl               | Action (grab, interact)             |
+| Shift              | Walk                                |
+| Alt                | Jump                                |
+| Space              | Draw weapon                         |
+| Z                  | Duck                                |
+| X                  | Dash                                |
+| A                  | Roll                                |
+| Escape             | Inventory                           |
+| Enter              | Start / add second player           |
+| Shift + Left/Right | Step left/right                     |
+| 5                  | Save game                           |
+| 9                  | Load game                           |
+| H                  | Show or hide help                   |
+| R / T              | Slow motion / fast motion           |
+| F12                | Toggle FPS counter                  |
 
 ## Technical Notes
 
