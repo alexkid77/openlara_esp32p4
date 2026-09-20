@@ -9,12 +9,10 @@ Runs the classic Tomb Raider 1 engine with software rendering, audio, and USB HI
 
 - Software RGB565 renderer at 320x240, hardware-scaled to 1024x600 via the PPA (Pixel Processing Accelerator)
 - 44.1 kHz stereo audio via I2S + ES8311 codec
-- USB HID keyboard input (boot protocol)
-- GT911 capacitive touch (I2C)
-- MicroSD card (SDMMC 4-bit) for game data
-- MP3 (minimp3), OGG (stb_vorbis) and zlib (tinf) decode support
+- USB HID keyboard input 
+- MicroSD card  for game data
 - On-screen FPS counter (F12 toggle)
-- Custom health/oxygen HUD overlay
+
 
 ## Demo
 
@@ -29,9 +27,8 @@ Runs the classic Tomb Raider 1 engine with software rendering, audio, and USB HI
 | Flash | 16 MB |
 | PSRAM | 32 MB (SPIRAM, HEX mode, 200 MHz) |
 | Display | 1024x600 MIPI DSI LCD (EK79007) |
-| Touch | GT911 capacitive (I2C) |
 | Audio | ES8311 codec via I2S |
-| Storage | MicroSD card (SDMMC 4-bit) |
+| Storage | MicroSD card  |
 | Input | USB HID keyboard (required) |
 
 ## Building
@@ -39,13 +36,10 @@ Runs the classic Tomb Raider 1 engine with software rendering, audio, and USB HI
 ### Prerequisites
 
 - ESP-IDF v5.4+ (tested with v5.4.4 / v5.5.5)
-- `riscv32-esp-elf` toolchain
 
 ### Build & Flash
 
 ```bash
-# Set up ESP-IDF environment
-. $IDF_PATH/export.sh
 
 # Build
 idf.py build
