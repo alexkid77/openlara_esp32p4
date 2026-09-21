@@ -79,4 +79,4 @@ A **USB keyboard** must be connected to the board.
 
 ## License
 
-OpenLara is licensed under the [GPL-3.0](https://github.com/XProger/OpenLara/blob/master/LICENSE).
+This port is based on [OpenLara](https://github.com/XProger/OpenLara), licensed under the [BSD-2-Clause](https://github.com/XProger/OpenLara/blob/master/LICENSE).
