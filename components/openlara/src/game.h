@@ -353,7 +353,9 @@ namespace Game {
     void frameEnd() {
         if (Core::settings.version == SETTINGS_READING) return;
 
-        UI::renderTouch();
+        #ifndef _GAPI_SW
+            UI::renderTouch();
+        #endif
         Core::endFrame();
     }
 

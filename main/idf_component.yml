@@ -1,7 +1,17 @@
 dependencies:
-  espressif/esp_lcd_touch: "*"
-  espressif/esp_lcd_ek79007: "*"
-  espressif/esp_lcd_touch_gt911: "*"
+  espressif/esp_lcd_touch: "^1.2.1"
+  espressif/esp_lcd_ek79007:
+    version: "^2.0.2"
+    rules:
+      - if: target == esp32p4
+  espressif/esp_lcd_touch_gt911:
+    version: "^1.2.1"
+    rules:
+      - if: target == esp32p4
+  espressif/esp_lcd_touch_gt1151:
+    version: "^1.1.0"
+    rules:
+      - if: target == esp32s31
   espressif/usb_host_hid: "^1.0.1"
-  espressif/esp_codec_dev: "*"
-  idf: ">=5.3"
+  espressif/esp_codec_dev: "^1.6.2"
+  idf: ">=5.4"

@@ -1,0 +1,11 @@
+menu "OpenLara controls"
+
+    config OPENLARA_TOUCH_CONTROL
+        bool "Enable touchscreen game controls"
+        default y
+        help
+            Poll the board touch controller and use OpenLara's on-screen
+            movement, camera, and action controls. USB keyboard input remains
+            available regardless of this setting.
+
+endmenu

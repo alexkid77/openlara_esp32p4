@@ -1,15 +1,15 @@
 /**
  * @file openlara_esp32p4.cpp
- * @brief OpenLara -> ESP32-P4 adapter.
+ * @brief OpenLara -> ESP32-P4 / ESP32-S31 adapter.
  *
  * Replaces src/platform/sdl12/main.cpp from the SDL 1.2 port:
  *   - Video  : 320x240 RGB565 framebuffer (software renderer) scaled to
- *              1024x600 by the PPA peripheral (ESP32P4DOOM pattern).
+ *              1024x600 on P4 or 800x480 on S31 by the PPA peripheral.
  *   - Input  : USB HID Host keyboard with a FreeRTOS queue (ESP32P4DOOM
  *              pattern), mapped to OpenLara's InputKey enum.
  *   - Data   : .PHD/.PCX levels and settings/saves from the SD card.
  *   - Audio  : Sound::fill() mixer pump (44100 Hz stereo int16) -> I2S ->
- *              ES8311 codec, the equivalent of the SDL_OpenAudio callback
+ *              ES8311 (P4) or ES8389 (S31), the equivalent of the SDL_OpenAudio callback
  *              of the SDL12 port.
  *
  * THIS IS THE ONLY TU THAT INCLUDES game.h (the engine is header-only:
@@ -19,6 +19,7 @@
 #include "openlara_esp32p4.h"
 
 #include "driver/ppa.h"
+#include "driver/gpio.h"
 #include "esp_cache.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -27,6 +28,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 #include "usb/hid_host.h"
 #include "usb/hid_usage_keyboard.h"
 #include "usb/usb_host.h"
@@ -48,6 +50,11 @@ static const char *TAG = "OPENLARA_ESP";
 static uint16_t *game_rb565;          // 320x240 RGB565: software renderer target and PPA input
 static uint16_t *global_frame_buffer; // 1024x600 framebuffer del panel DPI
 static ppa_client_handle_t ppa_client;
+#if CONFIG_OPENLARA_TOUCH_CONTROL
+static esp_lcd_touch_handle_t game_touch_handle;
+static bool touch_overlay_visible = true;
+static bool boot_button_ready;
+#endif
 
 // ------------------------------------------------------------------
 // Engine OS hooks (the mutex/cache hooks come from utils.h:
@@ -217,6 +224,111 @@ static void draw_health_bar() {
         }
     }
 }
+
+#if CONFIG_OPENLARA_TOUCH_CONTROL
+// Software GAPI ignores shader uniform updates, so UI::renderTouch() cannot
+// place its circle mesh at the button positions. Draw the controls on the
+// RGB565 game buffer after Game::render(), before the PPA scales it.
+static void sw_touch_disc(int cx, int cy, int radius, bool active) {
+    const uint16_t black = sw_rgb565(0, 0, 0);
+    const uint16_t rim = active ? sw_rgb565(255, 230, 135)
+                                : sw_rgb565(125, 225, 255);
+    int outer2 = radius * radius;
+    int inner2 = (radius - 2) * (radius - 2);
+    int x0 = cx - radius, x1 = cx + radius;
+    int y0 = cy - radius, y1 = cy + radius;
+    if (x0 < 0) x0 = 0;
+    if (x1 >= GAME_W) x1 = GAME_W - 1;
+    if (y0 < 0) y0 = 0;
+    if (y1 >= GAME_H) y1 = GAME_H - 1;
+    for (int y = y0; y <= y1; y++) {
+        uint16_t *row = game_rb565 + y * GAME_W;
+        for (int x = x0; x <= x1; x++) {
+            int dx = x - cx, dy = y - cy;
+            int dist2 = dx * dx + dy * dy;
+            if (dist2 > outer2) continue;
+            row[x] = dist2 >= inner2 ? rim : sw_blend(row[x], black);
+        }
+    }
+}
+
+static uint16_t sw_touch_glyph(char c) {
+    // Five rows of three pixels, packed from top to bottom.
+    switch (c) {
+        case 'A': return 0b010101111101101;
+        case 'C': return 0b011100100100011;
+        case 'I': return 0b111010010010111;
+        case 'J': return 0b001001001101010;
+        case 'K': return 0b101110100110101;
+        case 'L': return 0b100100100100111;
+        case 'M': return 0b101111111101101;
+        case 'N': return 0b101111111111101;
+        case 'P': return 0b110101110100100;
+        case 'V': return 0b101101101101010;
+        case 'W': return 0b101101111111101;
+        default:  return 0;
+    }
+}
+
+static void sw_touch_label(int cx, int cy, const char *label) {
+    const uint16_t white = sw_rgb565(255, 255, 255);
+    for (int letter = 0; letter < 2; letter++) {
+        uint16_t glyph = sw_touch_glyph(label[letter]);
+        for (int row = 0; row < 5; row++)
+            for (int col = 0; col < 3; col++)
+                if (glyph & (1u << (14 - row * 3 - col)))
+                    sw_fill_rect(cx - 7 + letter * 8 + col * 2,
+                                 cy - 5 + row * 2, 2, 2, white);
+    }
+}
+
+static void sw_touch_button(const vec2 &pos, int radius, bool active,
+                            const char *label) {
+    int x = int(pos.x + 0.5f), y = int(pos.y + 0.5f);
+    sw_touch_disc(x, y, radius, active);
+    sw_touch_label(x, y, label);
+}
+
+static void draw_touch_overlay() {
+    if (!touch_overlay_visible || !game_touch_handle || !Game::level) return;
+
+    const int radius = 14;
+    if (Input::btnEnable[Input::bMove]) {
+        float offset = Input::getTouchHeight() * 0.25f;
+        float marker_offset = offset * 1.40710678f;
+        vec2 base(marker_offset, Input::getTouchHeight() - marker_offset);
+        InputKey key = Input::touchKey[Input::zMove];
+        if (key != ikNone && Input::down[key]) {
+            const Input::Touch &touch = Input::touch[key - ikTouchA];
+            base = touch.start;
+        }
+        sw_touch_button(base, radius + 5, key != ikNone, "MV");
+        if (key != ikNone && Input::down[key]) {
+            const Input::Touch &touch = Input::touch[key - ikTouchA];
+            sw_touch_disc(int(touch.pos.x + 0.5f), int(touch.pos.y + 0.5f), 8, true);
+        }
+
+        // OpenLara's middle third accepts look gestures but has no static marker.
+        InputKey look_key = Input::touchKey[Input::zLook];
+        vec2 look_base(GAME_W * 0.5f, GAME_H * 0.65f);
+        if (look_key != ikNone && Input::down[look_key])
+            look_base = Input::touch[look_key - ikTouchA].start;
+        sw_touch_button(look_base, radius + 5, look_key != ikNone, "LK");
+        if (look_key != ikNone && Input::down[look_key]) {
+            const Input::Touch &touch = Input::touch[look_key - ikTouchA];
+            sw_touch_disc(int(touch.pos.x + 0.5f), int(touch.pos.y + 0.5f), 8, true);
+        }
+    }
+
+    static const char *labels[Input::bMAX] = {"MV", "WP", "WK", "AC", "JP", "IN"};
+    for (int i = Input::bWeapon; i < Input::bMAX; i++) {
+        if (!Input::btnEnable[i]) continue;
+        int button_radius = i == Input::bInventory ? 11 : radius;
+        bool active = Input::touchKey[Input::zButton] != ikNone && Input::btn == i;
+        sw_touch_button(Input::btnPos[i], button_radius, active, labels[i]);
+    }
+}
+#endif
 
 // ------------------------------------------------------------------
 // Input: USB HID keyboard -> OpenLara InputKey (via FreeRTOS queue)
@@ -394,6 +506,108 @@ static void usb_init() {
     ESP_ERROR_CHECK(hid_host_install(&hid_host_driver_config));
 }
 
+// Feed tracked panel touches into OpenLara's six touch input slots.
+#if CONFIG_OPENLARA_TOUCH_CONTROL
+static void boot_button_init() {
+    if (!game_touch_handle) return;
+
+    gpio_config_t config = {};
+    config.pin_bit_mask = 1ULL << BSP_BOOT_BUTTON_GPIO;
+    config.mode = GPIO_MODE_INPUT;
+    config.pull_up_en = GPIO_PULLUP_ENABLE;
+    config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    config.intr_type = GPIO_INTR_DISABLE;
+    esp_err_t ret = gpio_config(&config);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "BOOT button unavailable: %s", esp_err_to_name(ret));
+        return;
+    }
+    boot_button_ready = true;
+}
+
+static void boot_button_poll() {
+    if (!boot_button_ready) return;
+
+    static int last_sample_ms = -20;
+    static int candidate_since_ms;
+    static int candidate_level = 1;
+    static int stable_level = 1;
+    static bool sampled;
+    int now = osGetTimeMS();
+    if (now - last_sample_ms < 20) return;
+    last_sample_ms = now;
+
+    int level = gpio_get_level(BSP_BOOT_BUTTON_GPIO);
+    if (!sampled) {
+        candidate_level = stable_level = level;
+        candidate_since_ms = now;
+        sampled = true;
+        return;
+    }
+    if (level != candidate_level) {
+        candidate_level = level;
+        candidate_since_ms = now;
+    } else if (level != stable_level && now - candidate_since_ms >= 40) {
+        stable_level = level;
+        if (level == 0) {
+            touch_overlay_visible = !touch_overlay_visible;
+            ESP_LOGI(TAG, "Touch overlay: %s", touch_overlay_visible ? "ON" : "OFF");
+        }
+    }
+}
+
+static void touch_poll() {
+    if (!game_touch_handle) return;
+
+    static int last_poll_ms = -16;
+    static int last_error_log_ms = -2000;
+    int now = osGetTimeMS();
+    if (now - last_poll_ms < 16) return;
+    last_poll_ms = now;
+
+    esp_err_t ret = esp_lcd_touch_read_data(game_touch_handle);
+    esp_lcd_touch_point_data_t points[6];
+    uint8_t point_count = 0;
+    if (ret == ESP_OK)
+        ret = esp_lcd_touch_get_data(game_touch_handle, points, &point_count, 6);
+    if (ret != ESP_OK) {
+        // Keep the previous state on a failed sample; a later good sample
+        // will report releases without turning an I2C glitch into a tap.
+        if (now - last_error_log_ms >= 2000) {
+            ESP_LOGW(TAG, "Touch read failed: %s", esp_err_to_name(ret));
+            last_error_log_ms = now;
+        }
+        return;
+    }
+
+    // Release missing track IDs before allocating slots for new fingers.
+    for (int slot = 0; slot < 6; slot++) {
+        InputKey key = InputKey(ikTouchA + slot);
+        if (!Input::down[key]) continue;
+        bool present = false;
+        for (int i = 0; i < point_count; i++)
+            if (Input::touch[slot].id == points[i].track_id) {
+                present = true;
+                break;
+            }
+        if (!present) Input::setDown(key, false);
+    }
+
+    for (int i = 0; i < point_count; i++) {
+        InputKey key = Input::getTouch(points[i].track_id);
+        if (key == ikNone) continue;
+
+        // The PPA stretches the 320x240 game buffer over the whole panel.
+        float x = float(points[i].x) * GAME_W / LCD_H_RES;
+        float y = float(points[i].y) * GAME_H / LCD_V_RES;
+        x = sw_clampf(x, 0.0f, float(GAME_W - 1));
+        y = sw_clampf(y, 0.0f, float(GAME_H - 1));
+        Input::setPos(key, vec2(x, y));
+        Input::setDown(key, true);
+    }
+}
+#endif
+
 // drains the keyboard queue into Input::setDown (equivalent to SDL_PollEvent)
 static void input_poll() {
     key_event_t ev;
@@ -404,6 +618,10 @@ static void input_poll() {
         }
         Input::setDown(InputKey(ev.key), ev.pressed != 0);
     }
+#if CONFIG_OPENLARA_TOUCH_CONTROL
+    boot_button_poll();
+    touch_poll();
+#endif
 }
 
 // ------------------------------------------------------------------
@@ -429,7 +647,7 @@ static void audio_task(void *arg) {
     };
 
     if (esp_codec_dev_open(codec_dev, &sample_info) != ESP_CODEC_DEV_OK) {
-        ESP_LOGE(TAG, "Could not open the ES8311 codec: no sound");
+        ESP_LOGE(TAG, "Could not open the audio codec: no sound");
     } else {
         esp_codec_dev_set_out_vol(codec_dev, 70);
 
@@ -524,6 +742,9 @@ static void game_task(void *arg) {
         Game::render();
 
         draw_health_bar();
+#if CONFIG_OPENLARA_TOUCH_CONTROL
+        draw_touch_overlay();
+#endif
 
         video_present();
 
@@ -562,21 +783,33 @@ static void game_task(void *arg) {
         video_present();
     }
 
+#if CONFIG_IDF_TARGET_ESP32S31
+    vTaskDeleteWithCaps(NULL);
+#else
     vTaskDelete(NULL);
+#endif
 }
 
 // ------------------------------------------------------------------
 // Entry point
 // ------------------------------------------------------------------
-extern "C" void openlara_Start(bsp_p4_handles_t bsp_handles,
-                               uint16_t *frame_buffer) {
-    ESP_LOGI(TAG, "Starting OpenLara on ESP32-P4 (USB Keyboard)...");
+extern "C" void openlara_Start(uint16_t *frame_buffer, esp_lcd_touch_handle_t touch_handle) {
+#if CONFIG_OPENLARA_TOUCH_CONTROL
+    ESP_LOGI(TAG, "Starting OpenLara (USB keyboard + touch)...");
+    game_touch_handle = touch_handle;
+#else
+    ESP_LOGI(TAG, "Starting OpenLara (USB keyboard)...");
+    (void)touch_handle;
+#endif
 
     // 1. keyboard queue
     key_queue = xQueueCreate(32, sizeof(key_event_t));
 
     // 2. video (software framebuffer + PPA)
     video_init(frame_buffer);
+#if CONFIG_OPENLARA_TOUCH_CONTROL
+    boot_button_init();
+#endif
 
     // 3. USB HID Host keyboard
     usb_init();
@@ -584,15 +817,21 @@ extern "C" void openlara_Start(bsp_p4_handles_t bsp_handles,
     // 4. SD: contentDir/cacheDir/saveDir
     sd_init_content();
 
-    // 5. audio: I2S bus + ES8311 codec (the pump task is launched in
+    // 5. audio: I2S bus + board codec (the pump task is launched in
     //    game_task once Game::init() has run Sound::init())
     bsp_audio_init(NULL);
     codec_dev = bsp_audio_codec_speaker_init();
     if (!codec_dev)
-        ESP_LOGE(TAG, "ES8311 codec init failed: continuing without sound");
+        ESP_LOGE(TAG, "Audio codec init failed: continuing without sound");
 
     // 6. launch the game in its own task with a large stack (core 1)
+#if CONFIG_IDF_TARGET_ESP32S31
+    BaseType_t ok = xTaskCreatePinnedToCoreWithCaps(
+        game_task, "openlara", GAME_TASK_STACK, NULL, 5, NULL, 1,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
     BaseType_t ok = xTaskCreatePinnedToCore(game_task, "openlara",
                                             GAME_TASK_STACK, NULL, 5, NULL, 1);
+#endif
     assert(ok == pdTRUE);
 }
