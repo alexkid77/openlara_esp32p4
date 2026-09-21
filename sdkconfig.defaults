@@ -33,3 +33,6 @@ CONFIG_ESP_TASK_WDT_INIT=n
 # FAT: nombres largos en la SD (niveles .PHD)
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_VFS_FSTAT_BLKSIZE=4096
+
+# Controles táctiles desactivados por defecto
+# CONFIG_OPENLARA_TOUCH_CONTROL is not set

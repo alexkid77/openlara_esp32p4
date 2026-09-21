@@ -10,10 +10,11 @@ It runs the classic Tomb Raider 1 engine with software rendering, audio, and USB
 - Software RGB565 renderer at 320x240, hardware-scaled via the PPA to 1024x600 (P4) or 800x480 (S31)
 - 44.1 kHz stereo audio via I2S + ES8311 (P4) or ES8389 (S31)
 - USB HID keyboard input (boot protocol)
-- On-screen touch controls via GT911 (P4) or GT1151 (S31), enabled by default
+- On-screen touch controls via GT911 (P4) or GT1151 (S31), disabled by default
 - MicroSD card (SDMMC 4-bit) for game data
 - MP3 (minimp3), OGG (stb_vorbis) and zlib (tinf) decode support
 - On-screen FPS counter (F12 toggle)
+- Custom health/oxygen HUD overlay
 
 
 ## Demo
@@ -44,7 +45,8 @@ It runs the classic Tomb Raider 1 engine with software rendering, audio, and USB
 ### Build & Flash
 
 ```bash
-
+# Set up ESP-IDF environment
+. $IDF_PATH/export.sh
 
 # Set Target (ESP32-P4-Function-EV-Board)
 idf.py set-target esp32p4
@@ -84,8 +86,9 @@ Use a USB keyboard or the built-in touchscreen.
 ### Touchscreen Controls
 
 `idf.py menuconfig` → **OpenLara controls** → **Enable touchscreen game controls**
-enables touchscreen initialization and input. It is enabled by default. If the
-touch controller fails to initialize, the game continues with USB keyboard input.
+enables touchscreen initialization and input. It is disabled by default; enable
+it via `idf.py menuconfig`. If the touch controller fails to initialize, the game
+continues with USB keyboard input.
 
 Touchscreen controls divide the screen into movement (left), camera/look
 (middle), and action buttons (right). The right-side buttons handle weapon, walk,
@@ -140,6 +143,7 @@ in-game control settings.
 ## Credits
 
 - [XProger/OpenLara](https://github.com/XProger/OpenLara) — the original open-source Tomb Raider 1 engine
+- [laride](https://github.com/laride) — ESP-IDF 6.x compatibility, ESP32-S31-Korvo-1 board support, and on-screen touchscreen controls
 
 ## License
 
