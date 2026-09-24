@@ -1,0 +1,8 @@
+build/
+managed_components/
+sdkconfig
+sdkconfig.old
+sdcard/
+*.log
+session-*.md
+*.pyc
